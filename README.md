@@ -103,6 +103,10 @@ repository dispatch from upstream promotion automation. It:
 The workflow pins third-party GitHub Actions by full commit SHA and uses only
 `contents: write` / `pull-requests: write` permissions.
 
+## Rollback
+
+If a generated formula is bad, follow [`runbooks/rollback.md`](runbooks/rollback.md).
+
 ## Installing before a generated release lands
 
 Use the from-source flow documented in the [hive README][hive] (`just
