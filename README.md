@@ -83,6 +83,15 @@ The wrapper forwards the inputs the contributor relay needs:
   Kilo, Gemini/Google, OpenAI, Anthropic, Azure, AWS, LiteLLM, Ollama, Groq, and
   xAI environment variables matching the wrapper allow-list, plus the common
   credential directories under `$HOME`.
+- Wrapper settings (read by the wrapper itself):
+  - `HIVE_CONTRIBUTOR_CONFIG_DIR` — host Hive config directory bound into the
+    container at `/home/dev/.config/hive` (default `~/.config/hive`).
+  - `HIVE_CONTRIBUTE_STATE_DIR` — host directory holding the container home and
+    metrics (default `~/.local/state/hive/contribute`).
+  - `HIVE_CONTAINER_NAME` — container name for the Docker/Podman path (default
+    `hive-contributor`).
+  - `HIVE_CONTAINER_RUNTIME` is set by the wrapper inside the container to the
+    engine in use (`apptainer`, `docker`, or `podman`); it is not a setting.
 - Workspace: `${HIVE_WORKSPACE_DIR:-$PWD}` is bound to `/home/dev/workspace` and
   exported as `HIVE_WORKSPACE_DIR` inside the container.
 
