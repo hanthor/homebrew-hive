@@ -655,10 +655,17 @@ class WrapperTests(unittest.TestCase):
                 self.add_stub(engine)
                 proc = self.run_wrapper(env={"HIVE_CONTRIBUTE_RUNTIME": engine, **override})
                 self.assertEqual(proc.returncode, 0, proc.stderr)
-                binds = self.mounts(self.stub_record()[0], flag)
+                argv, env = self.stub_record()
+                binds = self.mounts(argv, flag)
                 self.assertTrue(expected <= set(binds), binds)
                 self.assertFalse(any(b.startswith(f"{self.home}/.config/hive:") for b in binds), binds)
                 self.assertFalse(any(b.startswith(f"{self.home}/.local/state/") for b in binds), binds)
+                # The relay must see the container mount point, not the host path.
+                if engine == "docker":
+                    self.assertIn("HIVE_CONTRIBUTOR_CONFIG_DIR", [argv[i + 1] for i, a in enumerate(argv) if a == "-e"])
+                    self.assertEqual(env.get("HIVE_CONTRIBUTOR_CONFIG_DIR"), "/home/dev/.config/hive")
+                else:
+                    self.assertEqual(self.forwarded(argv, env, "HIVE_CONTRIBUTOR_CONFIG_DIR"), "/home/dev/.config/hive")
         for created in (config, state / "home", state / "metrics"):
             self.assertTrue(created.is_dir(), created)
         self.assertFalse((self.home / ".config" / "hive").exists(), "default config dir must not be created")
