@@ -100,6 +100,21 @@ The wrapper forwards the inputs the contributor relay needs:
 - Workspace: `${HIVE_WORKSPACE_DIR:-$PWD}` is bound to `/home/dev/workspace` and
   exported as `HIVE_WORKSPACE_DIR` inside the container.
 
+## Persistent state and wrapper flags
+
+The wrapper keeps host-side state in two directories, both overridable:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `HIVE_CONTRIBUTOR_CONFIG_DIR` | `~/.config/hive` | bound to `/home/dev/.config/hive` |
+| `HIVE_CONTRIBUTE_STATE_DIR` | `~/.local/state/hive/contribute` | `home/` (bound to `/home/dev/.local/state/hive`) and `metrics/` (bound to `/var/run/hive-metrics`); also holds the temporary Lima env file |
+
+Both directories are created on first run. Two flags inspect the wrapper without
+starting the relay: `hive-contribute --wrapper-version` prints the wrapper
+version, channel and pinned image reference, and `--wrapper-print-runtime`
+prints the runtime (`apptainer`, `docker`, `podman` or `lima`) that would be
+selected for the current `HIVE_CONTRIBUTE_RUNTIME`.
+
 ## Automation
 
 `.github/workflows/convert.yml` runs every six hours, on manual dispatch, and on
