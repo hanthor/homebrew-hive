@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import os
+import pty
 import re
 import shutil
 import stat
@@ -235,7 +236,12 @@ class WrapperTests(unittest.TestCase):
         path.write_text(self.STUB)
         path.chmod(0o755)
 
-    def run_wrapper(self, *argv, env=None, cwd=None):
+    def run_wrapper(self, *argv, env=None, cwd=None, tty=False):
+        """Run the wrapper; with tty=True, stdin/stdout sit on a pseudo-terminal.
+
+        stderr is always captured so assertion messages stay diagnosable. The
+        wrapper only tests ``-t 0 && -t 1``, so stderr need not be on the pty.
+        """
         full_env = {
             "PATH": str(self.bindir),
             "HOME": str(self.home),
@@ -244,11 +250,21 @@ class WrapperTests(unittest.TestCase):
         }
         if env:
             full_env.update(env)
-        return subprocess.run(
-            ["bash", str(self.wrapper), *argv],
-            env=full_env, cwd=cwd or self.tmp, capture_output=True, text=True,
-            stdin=subprocess.DEVNULL,
-        )
+        cmd = ["bash", str(self.wrapper), *argv]
+        if not tty:
+            return subprocess.run(
+                cmd, env=full_env, cwd=cwd or self.tmp, capture_output=True, text=True,
+                stdin=subprocess.DEVNULL,
+            )
+        controller, follower = pty.openpty()
+        try:
+            return subprocess.run(
+                cmd, env=full_env, cwd=cwd or self.tmp, text=True, timeout=30,
+                stdin=follower, stdout=follower, stderr=subprocess.PIPE,
+            )
+        finally:
+            os.close(follower)
+            os.close(controller)
 
     def stub_record(self):
         lines = self.stub_out.read_text().splitlines()
@@ -529,6 +545,39 @@ class WrapperTests(unittest.TestCase):
         self.assertEqual(proc.stderr, "", "no git-auth warning when a token is set")
         volumes = [argv[i + 1] for i, a in enumerate(argv) if a == "-v"]
         self.assertIn(f"{self.tmp / 'workspace'}:/home/dev/workspace", volumes)
+
+    def test_docker_hand_off_allocates_a_tty_only_when_attached_to_one(self):
+        for engine in ("docker", "podman"):
+            self.add_stub(engine)
+            with self.subTest(engine=engine):
+                proc = self.run_wrapper("relay", env={"HIVE_CONTRIBUTE_RUNTIME": engine}, tty=True)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                argv, _ = self.stub_record()
+                self.assertEqual(argv[:6], ["run", "--rm", "-i", "--name", "hive-contributor", "-t"])
+                self.assertEqual(argv.count("-t"), 1)
+                self.assertEqual(argv[-1], "relay")
+
+    def test_env_name_collection_ignores_lines_inside_multiline_values(self):
+        # A value containing "\nHIVE_INJECTED=1" looks like a second variable in
+        # `env` output; the wrapper must take names from the shell, not from
+        # parsing `env`, so no such name is forwarded.
+        self.add_stub("docker")
+        proc = self.run_wrapper(
+            "relay",
+            env={
+                "HIVE_CONTRIBUTE_RUNTIME": "docker",
+                "HIVE_REAL": "kept",
+                "NOT_FORWARDED_SECRET": "line one\nHIVE_INJECTED=1\nGH_TOKEN=forged",
+            },
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        argv, _ = self.stub_record()
+        forwarded_names = [argv[i + 1] for i, a in enumerate(argv) if a == "-e"]
+        self.assertIn("HIVE_REAL", forwarded_names)
+        self.assertNotIn("HIVE_INJECTED", forwarded_names)
+        self.assertNotIn("GH_TOKEN", forwarded_names, "no token was set; a forged line must not create one")
+        self.assertNotIn("GH_TOKEN=forged", forwarded_names)
+        self.assertNotIn("NOT_FORWARDED_SECRET", forwarded_names)
 
     def run_credential_helper(self, helper_value: str, env: dict) -> str:
         """Run the git credential helper body the way git would (leading '!' stripped)."""
