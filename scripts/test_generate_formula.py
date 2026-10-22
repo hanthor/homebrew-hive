@@ -143,6 +143,11 @@ class RenderTests(unittest.TestCase):
         if committed.exists():
             self.assertEqual(re.findall(r"@[A-Z_]+@", committed.read_text(encoding="utf-8")), [])
 
+    def test_render_does_not_force_a_tty_for_docker_run(self):
+        text = gen.render(make_args())
+        self.assertNotIn("run --rm -it", text)
+        self.assertIn("run --rm -i --name", text)
+
     def test_render_escapes_quotes_in_inputs(self):
         text = gen.render(make_args(version='1"; system("id'))
         self.assertIn('version "1\\"; system(\\"id"', text)
@@ -242,6 +247,7 @@ class WrapperTests(unittest.TestCase):
         return subprocess.run(
             ["bash", str(self.wrapper), *argv],
             env=full_env, cwd=cwd or self.tmp, capture_output=True, text=True,
+            stdin=subprocess.DEVNULL,
         )
 
     def stub_record(self):
@@ -499,7 +505,11 @@ class WrapperTests(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         argv, env = self.stub_record()
-        self.assertEqual(argv[:3], ["run", "--rm", "-it"])
+        # stdin/stdout are not terminals under the test harness, so the wrapper
+        # must stay interactive (-i) without allocating a TTY (-t).
+        self.assertEqual(argv[:3], ["run", "--rm", "-i"])
+        self.assertNotIn("-t", argv)
+        self.assertNotIn("-it", argv)
         self.assertIn(self.args.image_ref, argv)
         self.assertEqual(argv[-1], "relay")
         self.assertNotIn("--runtime=runsc", argv)
@@ -708,13 +718,14 @@ class WrapperTests(unittest.TestCase):
                 proc = self.run_wrapper(env={"HIVE_CONTRIBUTE_RUNTIME": engine})
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 argv, _ = self.stub_record()
-                self.assertEqual(argv[:4], ["run", "--rm", "-it", "--name"])
+                self.assertEqual(argv[:4], ["run", "--rm", "-i", "--name"])
+                self.assertNotIn("-t", argv)
                 self.assertEqual(argv[4], "hive-contributor")
             with self.subTest(engine=engine, override=True):
                 proc = self.run_wrapper(env={"HIVE_CONTRIBUTE_RUNTIME": engine, "HIVE_CONTAINER_NAME": "relay-two"})
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 argv, _ = self.stub_record()
-                self.assertEqual(argv[:5], ["run", "--rm", "-it", "--name", "relay-two"])
+                self.assertEqual(argv[:5], ["run", "--rm", "-i", "--name", "relay-two"])
                 self.assertEqual(argv.count("--name"), 1)
 
     # limactl stub: `list` always succeeds; `shell` snapshots the env file
