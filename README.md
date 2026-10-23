@@ -165,8 +165,11 @@ they rebuild and republish the current stable release. It:
    --build-from-source`, `brew test`) against the just-published release;
 8. opens a PR for the generated formula.
 
-The workflow pins third-party GitHub Actions by full commit SHA and uses only
-`contents: write` / `pull-requests: write` permissions.
+The workflow pins third-party GitHub Actions by full commit SHA and declares
+no default permissions (`permissions: {}`); each job requests only what it
+needs: `contents: read` to resolve the image, `contents: write` /
+`pull-requests: write` to publish the release and open the formula PR, and
+`issues: write` for the failure-tracking issue.
 
 ## Testing the generator
 
